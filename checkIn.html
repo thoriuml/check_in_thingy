@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.2.1/jquery.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/moment.js/2.29.1/moment.min.js" integrity="sha512-qTXRIMyZIFb8iQcfjXWCO8+M5Tbc38Qi5WzdPOYZHIlZpzBHG3L3by84BBBOiRGiEb7KKtAOAs5qYdUiZiQNNQ==" crossorigin="anonymous"></script>
+
+<script>
+    var officeLoginUrl = "" //login domain
+    var timeToKill = 20 //time when the program should be killed (ie actually late), in oclock, for example 9 oclock -> 9
+    var buttonSheetId = "" //google sheet id
+    var buttonSheetNumber = "1" //google sheet number
+    var proximitySheetId = "" //google sheet id
+    var proximitySheetNumber = "1" //google sheet number
+    var staffId = ""
+    var staffLoginToken = ""
+    var delayMs = 30000 //delay for proximity check in (ms)
+    var delayMin = 2 //delay for proximity check in (min)
+
+
+    // start
+    console.log("current time is: " + new Date().toString())
+    var myVar;
+    var killTimeIntervalVar;
+    if(checkIfEnd()){
+        myVar = setInterval(getSheets, 10000);
+    }else{
+        console.log("end!" + " current time is: " + new Date().toString())
+    }
+    //end
+
+
+
+    function getSheets(){
+        // console.log("get button sheet: "+buttonSheetId)
+        getSheet(buttonSheetId,buttonSheetNumber,true);
+        // console.log("get proximity sheet: "+proximitySheetId)
+        getSheet(proximitySheetId,proximitySheetNumber,false);
+    }
+
+
+    function getSheet(thisSheetId,thisSheetNumber,immediate){
+        $.get("https://spreadsheets.google.com/feeds/cells/"+thisSheetId+"/"+thisSheetNumber+"/public/full?alt=json",function(data){
+            console.log("request google sheet")
+            checkSheet(data,immediate)
+            if(!checkIfEnd()){
+                clearInterval(myVar)
+                console.log("end!" + " current time is: " + new Date().toString())
+            }
+        });
+    }
+
+    function checkSheet(data,immediate){ //check if new row with today's time is present, if so run officeCheckIn
+        var entries = data.feed.entry
+        console.log(entries)
+        for (i = 0; i < entries.length; i+=6) {
+            // console.log(entries[i].content.$t)
+            var dateString = entries[i].content.$t.replaceAll(" at "," ")
+            // console.log(dateString)
+            var entityDate = moment(dateString,'MMMM DD, YYYY hh:mm a').toDate();
+            // console.log(entityDate)
+            if (new Date().toDateString() == entityDate.toDateString()){
+                console.log("is today!")
+                //do login
+                if(immediate){
+                    wait(15000)
+                    officeCheckIn()
+                    // checkInAfterDelay() //testing
+                }else{
+                    checkInAfterDelay()
+                }
+            }
+        }
+    }
+
+
+    function checkInAfterDelay(){
+        console.log("check in after delay")
+        var myDate =  new Date().setHours(timeToKill)
+        myDate = new Date(myDate).setMinutes(0,0,0)
+        if(moment(new Date()).add(delayMin, 'm').toDate()>=myDate){
+            console.log("last min check in waiting..")
+            killTimeIntervalVar = setInterval(checkInLastMin, 100);
+        }else{
+            console.log("waiting for delay: "+delayMs)
+            wait(delayMs)
+            officeCheckIn()
+        }
+    }
+
+    function checkInLastMin(){ //check in at last min
+        var timeToKillDate = new Date().setHours(timeToKill)
+        timeToKillDate = new Date(timeToKillDate).setMinutes(0,0,0)
+        timeToKillDate= new Date(timeToKillDate - 15000);
+        console.log("last min checkIn looping, check if its over: "+ timeToKillDate)
+        if(new Date()>=timeToKillDate){
+            officeCheckIn()
+            clearInterval(killTimeIntervalVar)
+        }
+    }
+
+
+    function checkIfEnd(){//check if program should be killed
+        var endTime = new Date().setHours(timeToKill)
+        endTime = new Date(endTime).setMinutes(0,0,0)
+        return new Date() < endTime
+    }
+
+    function wait(ms){
+        var start = new Date().getTime();
+        var end = start;
+        while(end < start + ms) {
+            end = new Date().getTime();
+        }
+    }
+
+
+    function officeCheckIn() {
+        $.ajax({
+            type: 'GET',
+            // crossDomain: true,
+            // dataType: 'jsonp',
+            dataType: 'json',
+            url: officeLoginUrl+"/goToWorkLight"+"?staffId="+staffId+"&token="+staffLoginToken,
+            // headers: {
+            //     'Access-Control-Allow-Origin':'*'
+            // },
+            success: function(data){
+                console.log(data)
+                clearInterval(myVar)
+                console.log("check in done!"+ " current time is: " + new Date().toString())
+
+            }
+        })
+
+
+    }
+</script>
+    </head>
+    <body>
+    </body>
+</html>
+
+<!-- - publish sheet-->
+<!-- - change shared settings to avaliable to everyone with link-->
+<!--https://spreadsheets.google.com/feeds/cells/(SHARED_SHEET_ID)/(SHEET_NUMBER)/public/full?alt=json-->
